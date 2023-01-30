@@ -1,0 +1,14 @@
+".\Objects\main.obj",
+".\Objects\uart.obj",
+".\Objects\oled12864.obj",
+".\Objects\I2C.obj",
+".\Objects\Delay.obj",
+".\Objects\DHT11.obj",
+".\Objects\DS1302.obj",
+".\Objects\timer.obj",
+".\Objects\NixieTube.obj" 
+TO ".\Objects\NixieTube" 
+PRINT(".\Listings\NixieTube.m51") RAMSIZE(256) 
+DISABLEWARNING (16) 
+CODE( 0X0000-0XFFF8 )
+XDATA( 0X0000-0X1FFF )

@@ -1,0 +1,184 @@
+C51 COMPILER V9.55   MAIN                                                                  12/15/2021 23:50:00 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: E:\Keilv5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE MODP2 DEBUG OBJECTEXTEND PRINT(.\Listings
+                    -\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC8.H>
+   2          #include <timer.h>
+   3          #include <uart.h>
+   4          #include <Delay.h>
+   5          #include <DS1302.h>
+   6          #include <oled12864.h>
+   7          #include <DHT11.h>
+   8          #include <NixieTube.h>
+   9          
+  10          unsigned char DHT11_RH[10];
+  11          unsigned char DHT11_Temp[10];
+  12          
+  13          unsigned char Str_DHT11[16];
+  14          DHT11_Data  Get_Data;//结构体，存储读取到的DHT11数据
+  15          
+  16          unsigned char xdata DS_1302TimeYear[3];
+  17          unsigned char xdata DS_1302TimeMonth[3];
+  18          unsigned char xdata DS_1302TimeDay[3];
+  19          unsigned char xdata DS_1302TimeHour[3];
+  20          unsigned char xdata DS_1302TimeMin[3];
+  21          unsigned char xdata DS_1302TimeSec[3];
+  22          
+  23          
+  24          void main()
+  25          {
+  26   1        OLED_Init();  //oled初始化
+  27   1        UartInit();   //串口1初始化
+  28   1        Uart2Init();  //串口2初始化
+  29   1        //send2Str("AT+CWJAP_DEF=\"306\",\"zhongheng.123\"\r\n");     //设置WIFI
+  30   1        OLED_ShowStr(0,0,"Please Wait...",2);
+  31   1        Delay1ms(5000);   //等待esp01初始化完成
+  32   1        Init_CCP0();
+  33   1        Timer0Init();   //定时器0初始化 + 中断优先级设置
+  34   1        DS1302_Init();  //DS1302初始化
+  35   1        send2Str("AT+CIPSNTPCFG=1,8,\"ntp1.aliyun.com\"\r\n"); //设置时间服务器aliyun
+  36   1        OLED_Clean();
+  37   1        OLED_ShowCN(0,0,0);             //温  (0,0)
+  38   1        OLED_ShowCN(17,0,1);            //度  (17,0)
+  39   1        OLED_ShowStr(33,0,":",2);       //：  (33,0)
+  40   1        OLED_ShowCN(82,0,7);            //℃  (81,0)
+  41   1        OLED_ShowCN(0,2,2);             //湿  (0,2)
+  42   1        OLED_ShowCN(17,2,3);            //度  (17,2)
+  43   1        OLED_ShowStr(33,2,":",2);       //：  (33,2)
+  44   1        OLED_ShowCN(17,4,4);              //年  (17,4)
+  45   1        OLED_ShowCN(49,4,5);              //月  (49,4)
+  46   1        OLED_ShowCN(81,4,6);              //日  (49,4)
+  47   1        OLED_ShowStr(33,6,":",2);       //：  (33,0)
+  48   1        OLED_ShowStr(57,6,":",2);       //：  (57,6)
+  49   1        IE2 = ES2;  //开启串口中断2
+  50   1        send2Str("AT+CIPSNTPTIME?\r\n"); //向ntp服务器发送请求
+  51   1        ET0 = 1;    //使能定时器0中断
+  52   1        DS1302_ReadTimeBCD();           
+  53   1        
+  54   1        Nixie_Time[0] = DS1302_Time[3]>>4;
+C51 COMPILER V9.55   MAIN                                                                  12/15/2021 23:50:00 PAGE 2   
+
+  55   1        Nixie_Time[1] = DS1302_Time[3] & 0x0f;
+  56   1        Nixie_Time[2] = DS1302_Time[4]>>4;
+  57   1        Nixie_Time[3] = DS1302_Time[4] & 0x0f;
+  58   1        
+  59   1        NixieTube_FlowTenHour(Nixie_Time[0],Nixie_Time[1],Nixie_Time[2]);
+  60   1        while(1)
+  61   1        {
+  62   2          if(n >2000)
+  63   2          {
+  64   3            n = 0;
+  65   3            if(Get_DHT11(&Get_Data) == 0)//读取成功
+  66   3            {
+  67   4              Data_To_Str(&Get_Data);//转化数据为ASCII，便于阅读
+  68   4              sendStr(Str_DHT11);//发送数据到串口
+  69   4              DHT11_RH[0] = Str_DHT11[0];     //转化数据为ASCII，便于阅读
+  70   4              DHT11_RH[1] = Str_DHT11[1];
+  71   4              DHT11_RH[2] = '%';
+  72   4              DHT11_RH[3] = 0;
+  73   4              DHT11_Temp[0] = Str_DHT11[5];
+  74   4              DHT11_Temp[1] = Str_DHT11[6];
+  75   4              DHT11_Temp[2] = Str_DHT11[7];
+  76   4              DHT11_Temp[3] = Str_DHT11[8];
+  77   4              DHT11_Temp[4] = Str_DHT11[9];
+  78   4              DHT11_Temp[5] = 0;
+  79   4              OLED_ShowStr(41,2,DHT11_RH,2);
+  80   4              OLED_ShowStr(41,0,DHT11_Temp,2);
+  81   4            }
+  82   3          }
+  83   2          
+  84   2          if(x >30000)    //一分钟一次,防止阴极中毒
+  85   2          {
+  86   3            x = 0;
+  87   3            NixieTube_FlowTenHour(Nixie_Time[0],Nixie_Time[1],Nixie_Time[2]);
+  88   3          }
+  89   2          
+  90   2          DS1302_ReadTimeASCII();                 //读取DS1302内的时间以ASCii形式存储到DS1302_Time数组
+  91   2          
+  92   2          DS_1302TimeYear[0] = DS1302_Time[0];    //以下对DS1302数组做处理方便显示在OLED
+  93   2          DS_1302TimeYear[1] = DS1302_Time[1];
+  94   2          DS_1302TimeYear[2] = 0;
+  95   2            
+  96   2          DS_1302TimeMonth[0] = DS1302_Time[2];
+  97   2          DS_1302TimeMonth[1] = DS1302_Time[3];
+  98   2          DS_1302TimeMonth[2] = 0;
+  99   2            
+ 100   2          DS_1302TimeDay[0] = DS1302_Time[4];
+ 101   2          DS_1302TimeDay[1] = DS1302_Time[5];
+ 102   2          DS_1302TimeDay[2] = 0;
+ 103   2            
+ 104   2          DS_1302TimeHour[0] = DS1302_Time[6];
+ 105   2          DS_1302TimeHour[1] = DS1302_Time[7];
+ 106   2          DS_1302TimeHour[2] = 0;
+ 107   2            
+ 108   2          DS_1302TimeMin[0] = DS1302_Time[8];
+ 109   2          DS_1302TimeMin[1] = DS1302_Time[9];
+ 110   2          DS_1302TimeMin[2] = 0;
+ 111   2            
+ 112   2          DS_1302TimeSec[0] = DS1302_Time[10];
+ 113   2          DS_1302TimeSec[1] = DS1302_Time[11];
+ 114   2          DS_1302TimeSec[2] = 0;
+ 115   2            
+ 116   2            
+C51 COMPILER V9.55   MAIN                                                                  12/15/2021 23:50:00 PAGE 3   
+
+ 117   2          OLED_ShowStr(0,4,DS_1302TimeYear,2);            //将时间日期显示在OLED屏幕
+ 118   2          OLED_ShowStr(33,4,DS_1302TimeMonth,2);
+ 119   2          OLED_ShowStr(65,4,DS_1302TimeDay,2);
+ 120   2            
+ 121   2          OLED_ShowStr(17,6,DS_1302TimeHour,2);
+ 122   2          OLED_ShowStr(41,6,DS_1302TimeMin,2);
+ 123   2          OLED_ShowStr(65,6,DS_1302TimeSec,2);
+ 124   2          
+ 125   2          DS1302_ReadTimeBCD(); 
+ 126   2          P0 = DS1302_Time[4]>>4 | DS1302_Time[4]<<4;     //辉光管显示分
+ 127   2          P2 = DS1302_Time[3]>>4 | DS1302_Time[3]<<4;     //辉光管显示时
+ 128   2          DS1302_ReadTimeBCD();           
+ 129   2          Nixie_Time[0] = DS1302_Time[3]>>4;
+ 130   2          Nixie_Time[1] = DS1302_Time[3] & 0x0f;
+ 131   2          Nixie_Time[2] = DS1302_Time[4]>>4;
+ 132   2          if(DS1302_Time[5] == 0)       //产生秒向分进位后判断四个Flag，产生相应滚动效果
+ 133   2          {
+ 134   3            NixieTube_Flag();     //获取flag
+ 135   3            switch(Nixie_Flag)
+ 136   3            {
+ 137   4              case 0:
+ 138   4                NixieTube_FlowMin(Nixie_Time[0],Nixie_Time[1],Nixie_Time[2]);
+ 139   4                break;
+ 140   4              case 1:
+ 141   4                NixieTube_FlowTenMin(Nixie_Time[0],Nixie_Time[1],Nixie_Time[2]);
+ 142   4                break;
+ 143   4              case 2:
+ 144   4                NixieTube_FlowHour(Nixie_Time[0],Nixie_Time[1],Nixie_Time[2]);
+ 145   4                break;
+ 146   4              case 3:
+ 147   4                NixieTube_FlowTenHour(Nixie_Time[0],Nixie_Time[1],Nixie_Time[2]);
+ 148   4                break;
+ 149   4              default:
+ 150   4                break;
+ 151   4            }
+ 152   3          }
+ 153   2        }
+ 154   1      }
+ 155          
+ 156          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    677    ----
+   CONSTANT SIZE    =     73    ----
+   XDATA SIZE       =     18    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     41    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

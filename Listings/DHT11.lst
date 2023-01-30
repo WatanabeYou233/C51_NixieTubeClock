@@ -1,0 +1,194 @@
+C51 COMPILER V9.55   DHT11                                                                 12/15/2021 23:50:00 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE DHT11
+OBJECT MODULE PLACED IN .\Objects\DHT11.obj
+COMPILER INVOKED BY: E:\Keilv5\C51\BIN\C51.EXE DHT11.c OPTIMIZE(8,SPEED) BROWSE MODP2 DEBUG OBJECTEXTEND PRINT(.\Listing
+                    -s\DHT11.lst) TABS(2) OBJECT(.\Objects\DHT11.obj)
+
+line level    source
+
+   1          #include "DHT11.h"
+   2          #include "Uart.h"
+   3          
+   4          
+   5          #define DHT11_DAT   P17
+   6          
+   7          //定义一个联合体，用于转换捕捉寄存器里面的数据 0-65535
+   8          static union 
+   9          {
+  10            unsigned int U16;
+  11            unsigned char U8[2];
+  12          }High;//表示，处理高电平中断和处理低电平中断的临时变量
+  13          static unsigned int xdata DHT11_Buffer[90];//接收到的脉冲宽度
+  14          static unsigned char DTH11_Buff_Count=0;//CCP中断里面进行计数操作
+  15          
+  16          
+  17          //软件延时函数，用于发送DHT11起始信号使用
+  18          void Delay_1ms(unsigned char a) // 1ms @22.1184MHz
+  19          {
+  20   1        unsigned char i, j;
+  21   1        unsigned char b=0;
+  22   1        for(b=0;b<a;b++)
+  23   1        {
+  24   2          i = 29;
+  25   2          j = 183;
+  26   2          do
+  27   2          {
+  28   3            while (--j);
+  29   3          } while (--i);
+  30   2        }
+  31   1      }
+  32          
+  33          //获取一次DHT11的数据 ,成功返回 0 ，通信协议失败返回1 ，校验错误返回2
+  34          unsigned char Get_DHT11(DHT11_Data *Data)
+  35          {
+  36   1        unsigned char i=0,j=0;
+  37   1        
+  38   1        DHT11_DAT = 0;//通过拉低数据线25mS，发送一个通信的起始信号
+  39   1        Delay_1ms(25);
+  40   1        DHT11_DAT = 1;//拉高数据线，等待DHT11发送数据。如果接收数据，则会进入CCP中断处理
+  41   1        CL = 0;CH = 0;//捕获定时器清零
+  42   1        CR = 1;
+  43   1        DTH11_Buff_Count = 0;//捕获次数清零
+  44   1        Delay_1ms(7);//软件延时7mS，等待接收完成数据。根据DHT11时序图，接收的时间一定小于 5344uS
+  45   1        CR = 0;//关闭PCA阵列，下面程序开解解码接收到的脉冲
+  46   1        for(i=0;i<90;i++)//接收到的脉冲，这里换算成uS,主频30M，所以除以30就是1微妙
+  47   1          DHT11_Buffer[i] /= 22;
+  48   1        
+  49   1        //根据DHT11协议，检测一个83uS的应答和一个87uS的开始信号，下一个信号就是数据
+  50   1        for(i=0;i<90;i++)
+  51   1        {
+  52   2          if((DHT11_Buffer[i]>78)&&(DHT11_Buffer[i+1]>78))
+  53   2          {
+  54   3            j=i+2;
+C51 COMPILER V9.55   DHT11                                                                 12/15/2021 23:50:00 PAGE 2   
+
+  55   3            break;
+  56   3          }
+  57   2        }
+  58   1        if(i > 90)//表示没有检测到起始信号，通信失败
+  59   1          return 1;
+  60   1        i = j;
+  61   1        j = 0;
+  62   1        Data->Humi_H = 0;Data->Humi_L = 0;
+  63   1        Data->Temp_H = 0;Data->Temp_L = 0;
+  64   1        Data->Check_Sum = 0;
+  65   1        for(i;i<90;i+=2)//从有效数据开始解码
+  66   1        {
+  67   2          if(j < 8)
+  68   2          {
+  69   3            Data->Humi_H <<= 1;
+  70   3            if(DHT11_Buffer[i]<DHT11_Buffer[i+1])//根据DHT11协议，这表示第1个数据 
+  71   3              Data->Humi_H++;
+  72   3          }
+  73   2          if((j > 7) && (j < 16))
+  74   2          {
+  75   3            Data->Humi_L <<= 1;
+  76   3            if(DHT11_Buffer[i]<DHT11_Buffer[i+1])//根据DHT11协议，这表示第2个数据 
+  77   3              Data->Humi_L++;
+  78   3          }
+  79   2          if((j > 15) && (j < 24))
+  80   2          {
+  81   3            Data->Temp_H <<= 1;
+  82   3            if(DHT11_Buffer[i]<DHT11_Buffer[i+1])//根据DHT11协议，这表示第3个数据 
+  83   3              Data->Temp_H++;
+  84   3          }
+  85   2          if((j > 23) && (j < 32))
+  86   2          {
+  87   3            Data->Temp_L <<= 1;
+  88   3            if(DHT11_Buffer[i]<DHT11_Buffer[i+1])//根据DHT11协议，这表示第4个数据 
+  89   3              Data->Temp_L++;
+  90   3          }
+  91   2          if((j > 31) && (j < 40))
+  92   2          {
+  93   3            Data->Check_Sum <<= 1;
+  94   3            if(DHT11_Buffer[i]<DHT11_Buffer[i+1])//根据DHT11协议，这表示第5个数据 
+  95   3              Data->Check_Sum++;
+  96   3          }
+  97   2          j++;
+  98   2        }
+  99   1        //进行校验，如果出错返回2
+ 100   1        if((Data->Humi_H + Data->Humi_L + Data->Temp_H + Data->Temp_L) == Data->Check_Sum)
+ 101   1          return 0;//成功读取数据
+ 102   1        else
+ 103   1          return 2;
+ 104   1      }
+ 105          //初始化CCP0  使用CCP0管脚，采样脉冲信号，利用捕获功能，捕获高电平宽度和低电平宽度     板子上面A4排母
+ 106          void Init_CCP0(void)
+ 107          {
+ 108   1        unsigned char i=0;
+ 109   1        //P_SW1 = 0X20;//CCP 全部分布到_3
+ 110   1        CF = 0;//PCA计数器阵列溢出标志位
+ 111   1        CR = 0;//PCA计数器阵列开关
+ 112   1        CCF2 = 0;//PCA2中断标志位
+ 113   1        CCF1 = 0;//PCA1中断标志位
+ 114   1        CCF0 = 0;//PCA0中断标志位
+ 115   1        CMOD = 0x08;//设置PCA时钟源&禁止PCA定时器溢出中断    时钟源是 1/1 ，若时钟30MHZ，那么CCP时钟是30MHZ ，每
+             -30个脉冲1uS       
+C51 COMPILER V9.55   DHT11                                                                 12/15/2021 23:50:00 PAGE 3   
+
+ 116   1        CCAPM0 = 0X71;//设置CCP0的参数，捕获模式，上升沿下降沿都捕获，允许CCP0中断
+ 117   1        CL = 0;CH = 0;//复位PCA寄存器
+ 118   1        CCAP0L = 0;CCAP0H = 0;//复位捕捉寄存器
+ 119   1        CR = 0;//PCA阵列开关
+ 120   1        for(i=0;i<90;i++)//接收到的脉冲清零
+ 121   1          DHT11_Buffer[i] = 0;
+ 122   1      }
+ 123          
+ 124          //把一个结构体里面的温湿度数据，转化为便于识别的字符串
+ 125          void Data_To_Str(DHT11_Data *Data)
+ 126          {
+ 127   1        Str_DHT11[0] = Data->Humi_H / 10 + 0X30;
+ 128   1        Str_DHT11[1] = Data->Humi_H % 10 + 0X30;
+ 129   1        Str_DHT11[2] = '.';
+ 130   1        Str_DHT11[3] = Data->Humi_L % 10 + 0X30;
+ 131   1        Str_DHT11[4] = '%';
+ 132   1        
+ 133   1        Str_DHT11[6] = Data->Temp_H / 10 + 0X30;
+ 134   1        Str_DHT11[7] = Data->Temp_H % 10 + 0X30;
+ 135   1        Str_DHT11[8] = '.';
+ 136   1        if((Data->Temp_L & 0X80) == 0X80)//表示接受到的温度是负数
+ 137   1        {
+ 138   2          Data->Temp_L &= 0X7F;
+ 139   2          Str_DHT11[5] = '-';
+ 140   2        }
+ 141   1        else//接收到的温度是正数
+ 142   1        {
+ 143   2          Str_DHT11[5] = '+';
+ 144   2        }
+ 145   1        Str_DHT11[9] = Data->Temp_L % 10 + 0X30;
+ 146   1        Str_DHT11[10] = ' ';
+ 147   1        
+ 148   1        Str_DHT11[11] = 0X0D;
+ 149   1        Str_DHT11[12] = 0X0A;
+ 150   1        
+ 151   1        Str_DHT11[13] = 0;
+ 152   1      }
+ 153          //PCA中断入口，具体是哪一个中断需要判断标志位
+ 154          void PCA_isr(void) interrupt 7
+ 155          {
+ 156   1        CL = 0;CH = 0;//复位捕捉寄存器
+ 157   1        High.U8[0] = CCAP0H;
+ 158   1        High.U8[1] = CCAP0L;
+ 159   1        DHT11_Buffer[DTH11_Buff_Count++] = High.U16;//把读到的捕获数据给了数据数组
+ 160   1        CCF0 = 0;//由于程序仅仅使用了一个CCF0，所以进入中断后不用判断
+ 161   1      }
+ 162          //
+ 163          
+ 164          
+ 165          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    993    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    180    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      3       8
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
